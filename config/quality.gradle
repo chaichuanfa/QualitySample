@@ -1,0 +1,153 @@
+apply plugin: 'checkstyle'
+apply plugin: 'findbugs'
+apply plugin: 'pmd'
+
+check.dependsOn 'checkstyle', 'findbugs', 'pmd', 'lint'
+
+def configDir = "${project.rootDir}/config/quality"
+def reportsDir = "${project.buildDir}/reports"
+
+checkstyle {
+    toolVersion '6.5'
+
+    configFile file('../config/quality/checkstyle/checkstyle.xml')
+
+    configProperties.checkstyleSuppressionFilterPath = file(
+            "${project.rootDir}/config/quality/checkstyle/suppressions.xml")
+            .absolutePath
+}
+
+task checkstyle(type: Checkstyle, group: 'verification') {
+    source 'src/main/java'
+    exclude '**/gen/**'
+    exclude '**/test/**'
+    exclude '**/androidTest/**'
+    exclude '**/R.java'
+    exclude '**/BuildConfig.java'
+
+    if (project.hasProperty('checkCommit') && project.property("checkCommit")) {
+        def ft = filterCommitter(getChangeFiles())
+        def includeList = new ArrayList<String>()
+        for (int i = 0; i < ft.size(); i++) {
+            String spliter = ft.getAt(i)
+            String[] spliterlist = spliter.split("/")
+            String fileName = spliterlist[spliterlist.length - 1]
+            includeList.add("**/" + fileName)
+        }
+        if (includeList.size() == 0) {
+            exclude '**/*.java'
+        } else {
+            include includeList
+        }
+    } else {
+        include '**/*.java'
+    }
+
+    def configProps = ['proj.module.dir': projectDir.absolutePath]
+    configProperties configProps
+
+    // empty classpath
+    classpath = files()
+}
+
+findbugs {
+    toolVersion = "3.0.1"
+    ignoreFailures = false
+    effort = "max"
+    reportLevel = "high"
+    excludeFilter file('../config/quality/findbugs/findbugs-filter.xml')
+}
+task findbugs(type: FindBugs, group: 'verification') {
+    description 'Run findbugs'
+    classes = files("${project.rootDir}/${project.getName()}/build/intermediates/classes")
+    source 'src'
+    include '**/*.java'
+    exclude '**/gen/**'
+    reports {
+        xml.enabled = false
+        html.enabled = true
+        xml {
+            destination "${project.rootDir}/${project.getName()}/build/reports/findbugs/findbugs.xml"
+        }
+        html {
+            destination "${project.rootDir}/${project.getName()}/build/reports/findbugs/findbugs.html"
+        }
+    }
+    classpath = files()
+}
+
+task pmd(type: Pmd) {
+    ignoreFailures = false
+    ruleSetFiles = files("$configDir/pmd/pmd-ruleset.xml")
+    ruleSets = []
+
+    source 'src/main/java'
+    exclude '**/gen/**'
+
+    if (project.hasProperty('checkCommit') && project.property("checkCommit")) {
+        def ft = filterCommitter(getChangeFiles())
+        def includeList = new ArrayList<String>()
+        for (int i = 0; i < ft.size(); i++) {
+            String spliter = ft.getAt(i)
+            String[] spliterlist = spliter.split("/")
+            String fileName = spliterlist[spliterlist.length - 1]
+            includeList.add("**/" + fileName)
+        }
+        if (includeList.size() == 0) {
+            exclude '**/*.java'
+        } else {
+            include includeList
+        }
+    } else {
+        include '**/*.java'
+    }
+
+    reports {
+        xml.enabled = false
+        html.enabled = true
+        xml {
+            destination "$reportsDir/pmd/pmd.xml"
+        }
+        html {
+            destination "$reportsDir/pmd/pmd.html"
+        }
+    }
+}
+
+android {
+    lintOptions {
+        abortOnError false
+        xmlReport false
+        htmlReport true
+        lintConfig file("$configDir/lint/lint.xml")
+        htmlOutput file("$reportsDir/lint/lint-result.html")
+        xmlOutput file("$reportsDir/lint/lint-result.xml")
+    }
+}
+
+preBuild.dependsOn('checkstyle')
+
+def filterCommitter(String gitstatusinfo) {
+    ArrayList<String> filterList = new ArrayList<String>()
+    String[] lines = gitstatusinfo.split("\\n")
+    for (String line : lines) {
+        if (line.contains(".java")) {
+            String[] spliters = line.trim().split(" ")
+            for (String str : spliters) {
+                if (str.contains(".java")) {
+                    filterList.add(str)
+                }
+            }
+        }
+    }
+    return filterList
+}
+
+def getChangeFiles() {
+    try {
+        String changeInfo = 'git status -s'.execute(null, project.rootDir).text.trim()
+        return changeInfo == null ? "" : changeInfo
+    } catch (Exception e) {
+        return ""
+    }
+}
