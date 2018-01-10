@@ -8,23 +8,28 @@ def configDir = "${project.rootDir}/config/quality"
 def reportsDir = "${project.buildDir}/reports"
 
 checkstyle {
+    //工具版本
     toolVersion '6.5'
-
+    //配置文件路径
     configFile file('../config/quality/checkstyle/checkstyle.xml')
-
+    //filter路径
     configProperties.checkstyleSuppressionFilterPath = file(
             "${project.rootDir}/config/quality/checkstyle/suppressions.xml")
             .absolutePath
 }
 
 task checkstyle(type: Checkstyle, group: 'verification') {
+    //检测代码路径
     source 'src/main/java'
+    //排除项
     exclude '**/gen/**'
     exclude '**/test/**'
     exclude '**/androidTest/**'
     exclude '**/R.java'
     exclude '**/BuildConfig.java'
 
+    //判断是否是git pre-commit hook触发的checkstyle
+    // 如果是，只检测要提交的java文件，否则检测路径下的所有java文件
     if (project.hasProperty('checkCommit') && project.property("checkCommit")) {
         def ft = filterCommitter(getChangeFiles())
         def includeList = new ArrayList<String>()
@@ -51,21 +56,29 @@ task checkstyle(type: Checkstyle, group: 'verification') {
 }
 
 findbugs {
+    //工具版本
     toolVersion = "3.0.1"
+    //忽略失败，如果检测到bug，task会执行失败，这里设置true会让task继续执行
     ignoreFailures = false
+    //分析等级：min  default   max
     effort = "max"
+    //检测bug的等级：low   medium  high，等级越高检测越严格
     reportLevel = "high"
+    //exclude Filter路径
     excludeFilter file('../config/quality/findbugs/findbugs-filter.xml')
 }
 task findbugs(type: FindBugs, group: 'verification') {
     description 'Run findbugs'
+    //检测二进制文件路径
     classes = files("${project.rootDir}/${project.getName()}/build/intermediates/classes")
     source 'src'
+    //匹配检测的文件名
     include '**/*.java'
     exclude '**/gen/**'
     reports {
         xml.enabled = false
         html.enabled = true
+        //配置检查报告输出路径
         xml {
             destination "${project.rootDir}/${project.getName()}/build/reports/findbugs/findbugs.xml"
         }
@@ -77,13 +90,17 @@ task findbugs(type: FindBugs, group: 'verification') {
 }
 
 task pmd(type: Pmd) {
+    //忽略失败，如果设置为true，检测出bug会停止task
     ignoreFailures = false
+    //filter路径
     ruleSetFiles = files("$configDir/pmd/pmd-ruleset.xml")
     ruleSets = []
-
+    //检测资源路径
     source 'src/main/java'
+    //排除项
     exclude '**/gen/**'
 
+    //判断是否是git pre-commit hook触发的pmd
     if (project.hasProperty('checkCommit') && project.property("checkCommit")) {
         def ft = filterCommitter(getChangeFiles())
         def includeList = new ArrayList<String>()
@@ -127,6 +144,7 @@ android {
 
 preBuild.dependsOn('checkstyle')
 
+//过滤java文件
 def filterCommitter(String gitstatusinfo) {
     ArrayList<String> filterList = new ArrayList<String>()
     String[] lines = gitstatusinfo.split("\\n")
@@ -143,6 +161,7 @@ def filterCommitter(String gitstatusinfo) {
     return filterList
 }
 
+//获取git commit的文件列表
 def getChangeFiles() {
     try {
         String changeInfo = 'git status -s'.execute(null, project.rootDir).text.trim()
